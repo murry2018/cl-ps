@@ -11,4 +11,4 @@
    #:init))
 
 (defpackage #:ps-user
-  (:use #:common-lisp #:cl-user #:ps))
+  (:use #:common-lisp #:cl-user #:ps #:rtl))

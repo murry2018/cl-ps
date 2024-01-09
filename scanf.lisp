@@ -1,7 +1,7 @@
 ;;; Quickstart
 ;;     > (ql:quickload :ps)
 ;;     > (setq x 0 y 0)
-;;     > (setf (ps:scanf nil "~d ~d" x y) "991 125")
+;;     > (setf (ps:scanf "~d ~d" x y) "991 125")
 ;;     > x
 ;;    991
 ;;     > y
@@ -9,7 +9,8 @@
 ;;; What did I do?
 ;; 1. copying everthing from format-lisp.lisp (https://cl-pdx.com/static/format-setf.lisp)
 ;; 2. alternating from '(setf (format ' to '(setf (scanf '
-;; 3. export as ps:scanf
+;; 3. get rid of 'stream' parameter from format-setf
+;; 4. export as ps:scanf
 (in-package #:ps)
 
 ;;; Original code from
@@ -317,14 +318,12 @@
 	 when (char= x #\~)
 	 collect (parse-directive control-string i))))
 
-(defmacro format-setf (stream control-string &rest args)
+(defmacro format-setf (control-string &rest args)
   ;; *control-string* will contain the original control string, so
   ;; that we can always know where we are. Similarly *value* and *arguments*.
   `(let ((*control-string* (or *control-string* ,control-string))
 	 (*value* (or *value* ,(first (last args))))
 	 (*arguments* (or *arguments* ',(butlast args))))
-     (when ,stream
-       (error "Non-nil stream: ~a" ,stream))
      ;; we ignore the possibility of ~:* for now. Also, we will probably
      ;; never get ~? working...
      ,(let ((value (first (last args)))
@@ -374,7 +373,7 @@
 				 ((#\{)
 				  (format-setf-iteration directive pos value arguments control-string))
 				 ((#\Newline)
-				  `(setf (scanf nil ,(subseq control-string (format-directive-end directive)) ,@arguments) 
+				  `(setf (scanf ,(subseq control-string (format-directive-end directive)) ,@arguments) 
 					 (subseq ,value ,pos)))
 				 )))
 		  `(progn
@@ -385,7 +384,7 @@
 
 (defun pretreat-conditional (control-string directives arguments value)
   ;; here we go into pretreatment of the control-string. We convert
-  ;; (setf (scanf nil "~a://~a~@[:~d]/~a" protocol host port path)
+  ;; (setf (scanf "~a://~a~@[:~d]/~a" protocol host port path)
   ;;       "http://www-jcsu/~csr21/")
   ;;
   ;; =>
@@ -416,24 +415,24 @@
 	      (false-case (gensym))
 	      (true-case (gensym)))
 	  `(let ,gensyms
-	     (let ((,true-case (ignore-errors (setf (scanf nil
+	     (let ((,true-case (ignore-errors (setf (scanf
 							    ,(concatenate 'string pre-string conditional-string post-string)
 							    ,@gensyms)
 						    ,value)))
-		   (,false-case (ignore-errors (setf (scanf nil
+		   (,false-case (ignore-errors (setf (scanf
 							     ,(concatenate 'string pre-string post-string)
 							     ,@(cdr gensyms))
 						     ,value))))
 	       (cond
 		;; hmm. I think that it's sensible to assume that we do the true case, no?
 		;; maybe we should have a special variable (*favoured-conditional-branch*?)
-		((and ,true-case ,false-case) (setf (scanf nil ,(concatenate 'string pre-string conditional-string post-string) ,@arguments) ,value))
-		(,true-case (setf (scanf nil ,(concatenate 'string pre-string conditional-string post-string) ,@arguments) ,value))
+		((and ,true-case ,false-case) (setf (scanf ,(concatenate 'string pre-string conditional-string post-string) ,@arguments) ,value))
+		(,true-case (setf (scanf ,(concatenate 'string pre-string conditional-string post-string) ,@arguments) ,value))
 		(,false-case
 		 ,(let ((argument-position (format-setf-arguments-consumed pre-string)))
 		    `(progn
 		       (setf ,(elt arguments argument-position) nil) 
-		       (setf (scanf nil ,(concatenate 'string pre-string post-string) ,@(subseq arguments 0 argument-position) ,@(subseq arguments (+ 1 argument-position)))
+		       (setf (scanf ,(concatenate 'string pre-string post-string) ,@(subseq arguments 0 argument-position) ,@(subseq arguments (+ 1 argument-position)))
 			     ,value))))
 		(t (error "Error expanding conditional -- both false")))))))
        (colonp
@@ -444,11 +443,11 @@
 		(false-case (gensym))
 		(true-case (gensym)))
 	    `(let ,gensyms
-	       (let ((,true-case (ignore-errors (setf (scanf nil
+	       (let ((,true-case (ignore-errors (setf (scanf
 							      ,(concatenate 'string pre-string true-string post-string)
 							      ,@(cdr gensyms))
 						      ,value)))
-		     (,false-case (ignore-errors (setf (scanf nil
+		     (,false-case (ignore-errors (setf (scanf
 							       ,(concatenate 'string pre-string false-string post-string)
 							       ,@(cdr gensyms))
 						       ,value))))
@@ -459,13 +458,13 @@
 		      `(progn
 			 (warn "Assuming truth value for ~a is T" ',(elt arguments argument-position))
 			 (setf ,(elt arguments argument-position) t)
-			 (setf (scanf nil ,(concatenate 'string pre-string true-string post-string) ,@(subseq arguments 0 argument-position) ,@(subseq arguments (+ 1 argument-position)))
+			 (setf (scanf ,(concatenate 'string pre-string true-string post-string) ,@(subseq arguments 0 argument-position) ,@(subseq arguments (+ 1 argument-position)))
 			       ,value))))
 		  (,false-case
 		   ,(let ((argument-position (format-setf-arguments-consumed pre-string)))
 		      `(progn
 			 (setf ,(elt arguments argument-position) nil) 
-			 (setf (scanf nil ,(concatenate 'string pre-string false-string post-string) ,@(subseq arguments 0 argument-position) ,@(subseq arguments (+ 1 argument-position)))
+			 (setf (scanf ,(concatenate 'string pre-string false-string post-string) ,@(subseq arguments 0 argument-position) ,@(subseq arguments (+ 1 argument-position)))
 			       ,value))))
 		  (t (error "Error expanding conditional -- both false"))))))))
        (t
@@ -480,12 +479,12 @@
 			     with n = 0
 			     for d in conditional-directives
 			     if (char= (format-directive-character d) #\;)
-			     collect `(,(nth n result-gensyms) (ignore-errors (setf (scanf nil
+			     collect `(,(nth n result-gensyms) (ignore-errors (setf (scanf
 											    ,(concatenate 'string pre-string (subseq conditional-string start (format-directive-start d)) post-string)
 											    ,@(cdr arg-gensyms))
 										    ,value)))
 			     do (incf n))
-		       (,(nth (1- nclauses) result-gensyms) (ignore-errors (setf (scanf nil
+		       (,(nth (1- nclauses) result-gensyms) (ignore-errors (setf (scanf
 											 ,(concatenate 'string pre-string (subseq conditional-string (format-directive-end last-separator)))
 											 ,@(cdr arg-gensyms))
 										 ,value))))
@@ -498,7 +497,7 @@
 			  if (char= (format-directive-character d) #\;)
 			  collect `(,(nth n result-gensyms)
 				    (setf ,(elt arguments argument-position) ,n)
-				    (setf (scanf nil
+				    (setf (scanf
 						  ,(concatenate 'string pre-string (subseq conditional-string start (format-directive-start d)) post-string)
 						  ,@(subseq arguments 0 argument-position)
 						  ,@(subseq arguments (+ 1 argument-position)))
@@ -508,7 +507,7 @@
 		   (setf ,(elt arguments argument-position) ,(if (format-directive-colonp last-separator)
 								 `(progn (warn "Assuming -1 for default conditional clause") -1)
 							       (1- nclauses)))
-		   (setf (scanf nil ,(concatenate 'string pre-string (subseq conditional-string (format-directive-end last-separator)) post-string)
+		   (setf (scanf ,(concatenate 'string pre-string (subseq conditional-string (format-directive-end last-separator)) post-string)
 				 ,@(subseq arguments 0 argument-position)
 				 ,@(subseq arguments (+ 1 argument-position)))
 			 ,value)))
@@ -529,7 +528,7 @@
 							       (length control-string))
 							`((search ,literal ,value :start2 ,pos)))))
        ,@(when (or (rest arguments) (not (equal (subseq control-string (format-directive-end directive)) "")))
-	   `((setf (scanf nil ,(subseq control-string (format-directive-end directive)) ,@(rest arguments)) 
+	   `((setf (scanf ,(subseq control-string (format-directive-end directive)) ,@(rest arguments)) 
 		   (subseq ,value (search ,literal ,value :start2 ,pos)))))
        ,value)))
 
@@ -563,7 +562,7 @@
 	  (let ((nspaces (gensym)))
 	    `(let ((,nspaces (1- (+ ,colnum (- ,colinc (mod (+ position-since-last-newline ,pos) ,colinc))))))
 	       (progn
-		 (setf (scanf nil ,(subseq control-string (format-directive-end directive))
+		 (setf (scanf ,(subseq control-string (format-directive-end directive))
 			       ,@arguments)
 		       (subseq ,value (+ ,pos ,nspaces)))
 		 ,value))))
@@ -574,12 +573,12 @@
 				 (mod (- ,colnum (+ position-since-last-newline ,pos)) ,colinc)
 			       (- ,colnum (+ position-since-last-newline ,pos)))))
 	       (progn
-		 (setf (scanf nil ,(subseq control-string (format-directive-end directive))
+		 (setf (scanf ,(subseq control-string (format-directive-end directive))
 			       ,@arguments)
 		       (subseq ,value (+ ,pos ,nspaces)))
 		 ,value))))))))
 			 
-;; (setf (scanf nil "~fe2" x) "1.4e2") doesn't really work at the
+;; (setf (scanf "~fe2" x) "1.4e2") doesn't really work at the
 ;; moment.
 (defun format-setf-float (directive pos value arguments control-string)
   (let ((val (gensym))
@@ -594,7 +593,7 @@
 		  ;; strictly necessary, since we've fixed the "no
 		  ;; directives" case in format-setf.
 		  ,@(when (rest arguments)
-		      `((setf (scanf nil ,(subseq control-string (format-directive-end directive)) ,@(rest arguments)) 
+		      `((setf (scanf ,(subseq control-string (format-directive-end directive)) ,@(rest arguments)) 
 			      (subseq ,value (+ ,pos ,posn)))))
 		  ,value)))))
 
@@ -628,7 +627,7 @@
 	`(progn
 	   ,@(loop for a in arguments
 		   collect `(setf ,a (make-list ,nargs)))
-	   (setf (scanf nil
+	   (setf (scanf
 			 ,(apply #'concatenate 'string (append (make-list (length arguments) :initial-element (subseq control-string (format-directive-end directive) close-pos))
 							       (list (subseq control-string following))))
 			 ,@(loop for y in arguments
@@ -641,7 +640,7 @@
      ;; ignore ~^ and 0-length strings for now.
      (atsignp 
       (let ((nargs (format-setf-arguments-consumed (subseq control-string (format-directive-end directive) close-pos))))
-	`(progn (setf (scanf nil 
+	`(progn (setf (scanf 
 			      ,(apply #'concatenate 'string (append (make-list (/ (length arguments) nargs) :initial-element (subseq control-string (format-directive-end directive) close-pos))
 								    (list (subseq control-string following))))
 			      ,@arguments)
@@ -658,7 +657,7 @@
 	       ,@(loop for x from *maximal-depth* downto 1
 		       collect (let ((values (loop for y from 1 to x collect (gensym))))
 				 `(let ,values
-				    (if (ignore-errors (setf (scanf nil ,(expand-iteration control-string (format-directive-end directive) close-pos x) ,@values) ,value))
+				    (if (ignore-errors (setf (scanf ,(expand-iteration control-string (format-directive-end directive) close-pos x) ,@values) ,value))
 					(return-from ,length-block (values ,x (funcall #'list ,@values)))
 				      nil)))))
 	   (unless ,len
@@ -685,7 +684,7 @@
 	   (progn (setf ,(first arguments) ,val)
 		  ;; ,@nil is discarded
 		  ,@(when (or (rest arguments) (not (equal (subseq control-string (format-directive-end directive)) "")))
-		      `((setf (scanf nil ,(subseq control-string (format-directive-end directive)) ,@(rest arguments)) 
+		      `((setf (scanf ,(subseq control-string (format-directive-end directive)) ,@(rest arguments)) 
 			      (subseq ,value (+ ,pos ,posn)))))
 		  ,value)
 	 (error "Error in format-setf-integer: failed to parse integer")))))
@@ -694,7 +693,7 @@
   (let ((val (gensym))
 	(posn (gensym)))
     ;; erm, this needs an end, really.
-    ;; (setf (scanf nil "~s://~s/~s" x y z) "http://www-jcsu.jesus.cam.ac.uk/~csr21/format-setf.lisp")
+    ;; (setf (scanf "~s://~s/~s" x y z) "http://www-jcsu.jesus.cam.ac.uk/~csr21/format-setf.lisp")
     ;; should work rather than complain about package errors...
     ;; something like :end (search ,(subseq control-string (format-directive-end directive) (start-of-new-directive)) value).
     ;;
@@ -707,7 +706,7 @@
        ,@(unless (rest arguments) `((declare (ignorable ,posn))))
        (progn (setf ,(first arguments) ,val)
 	      ,@(when (rest arguments)
-		  `((setf (scanf nil ,(subseq control-string (format-directive-end directive)) ,@(rest arguments)) 
+		  `((setf (scanf ,(subseq control-string (format-directive-end directive)) ,@(rest arguments)) 
 			  (subseq ,value ,posn))))
 	      ,value))))
 
@@ -715,7 +714,7 @@
   (let ((n (or (cdar (format-directive-params directive)) 1)))
     `(if (every (lambda (x) (equal x ,character))
 		(subseq ,value ,pos ,(+ pos n)))
-	 (setf (scanf nil ,(subseq control-string (format-directive-end directive)) ,@arguments)
+	 (setf (scanf ,(subseq control-string (format-directive-end directive)) ,@arguments)
 	       (subseq ,value ,(+ pos n)))
        (error "Mismatching number of ~as: ~s ~s" ,(or (char-name character) character) ,control-string ,value))))
 
@@ -738,13 +737,13 @@
 		    ;; character?
 		    
 		    ;; this is actually conceivably not the right behaviour; consider
-		    ;; (setf (scanf nil "~@ce" x) "#\\Newlinee")
+		    ;; (setf (scanf "~@ce" x) "#\\Newlinee")
 		    
 		    ;; we probably want to match more than just the next character.
 		    `(if (equal (char ,value ,(+ pos 3)) (char ,control-string ,(format-directive-end directive)))
 			 (progn (setf ,(first arguments) (read-from-string ,value t nil :start ,pos :end ,(+ pos 3)))
 				,@(when (rest arguments)
-				    `((setf (scanf nil ,(subseq control-string (format-directive-end directive)) ,@(rest arguments))
+				    `((setf (scanf ,(subseq control-string (format-directive-end directive)) ,@(rest arguments))
 					    (subseq ,value ,(+ pos 3)))))
 				,value)
 		       `(progn (setf ,(first arguments) (loop for x from ,pos to (length ,value)
@@ -753,12 +752,12 @@
 							      return it
 							      finally (error "No matching character found")))
 			      ,@(when (rest arguments)
-				  `((setf (scanf nil ,(subseq control-string (format-directive-end directive)) ,@(rest arguments))
+				  `((setf (scanf ,(subseq control-string (format-directive-end directive)) ,@(rest arguments))
 					  (subseq ,value ,(+ pos 3)))))
 			      ,value)))))
      (t `(progn (setf ,(first arguments) (char ,value ,pos))
 		,@(when (rest arguments)
-		    `((setf (scanf nil ,(subseq control-string (format-directive-end directive)) ,@(rest arguments)) 
+		    `((setf (scanf ,(subseq control-string (format-directive-end directive)) ,@(rest arguments)) 
 			    (subseq ,value ,(+ pos 1)))))
 		,value)))))
 

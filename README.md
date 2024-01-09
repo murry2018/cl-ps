@@ -28,7 +28,7 @@ previous section.
 - `cmu-infix` facilities: See <https://github.com/quil-lang/cmu-infix>
 - `cl-interpol` reader macros: See <https://edicl.github.io/cl-interpol/>
 - `rutils` reader macros: See <https://github.com/vseloved/rutils>
-- `(setf (scanf ...))` facility: Original
+- `(setf (scanf ...))` facility: Originally written by Christophe Rhodes (csr21@cam.ac.uk)
 
 ### The `ps-user` system
 
